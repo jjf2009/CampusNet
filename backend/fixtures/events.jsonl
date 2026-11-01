@@ -1,0 +1,2 @@
+{"event_id":"fixture-accept-1","timestamp":"2026-11-01T10:00:00Z","username":"student01@gec.edu.in","result":"accept","nas_ip":"127.0.0.1","nas_port":0,"calling_station_id":"AA-BB-CC-DD-EE-01","called_station_id":"CampusNet-Demo","auth_method":"PAP","source":"freeradius"}
+{"event_id":"fixture-reject-1","timestamp":"2026-11-01T10:01:00Z","username":"student01@gec.edu.in","result":"reject","nas_ip":"127.0.0.1","auth_method":"PAP","source":"freeradius"}
