@@ -22,7 +22,8 @@ def parse_event_line(line: str) -> dict[str, Any] | None:
         raw = json.loads(line)
         if not isinstance(raw, dict):
             return None
-        result = str(raw.get("result", "")).lower()
+        result = str(raw.get("result", "")).strip().lower()
+        result = {"access-accept": "accept", "access-reject": "reject"}.get(result, result)
         username = str(raw.get("username", "")).strip()
         if result not in {"accept", "reject"} or not username:
             return None
@@ -31,7 +32,9 @@ def parse_event_line(line: str) -> dict[str, Any] | None:
         safe.update(timestamp=timestamp, username=username, result=result)
         safe["event_id"] = str(raw.get("event_id") or hashlib.sha256(line.strip().encode()).hexdigest())
         safe["source"] = str(raw.get("source") or "freeradius")
-        if safe.get("nas_port") is not None:
+        if safe.get("nas_port") in (None, ""):
+            safe["nas_port"] = None
+        else:
             safe["nas_port"] = int(safe["nas_port"])
         return safe
     except (ValueError, TypeError, json.JSONDecodeError):

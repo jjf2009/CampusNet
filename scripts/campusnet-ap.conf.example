@@ -1,0 +1,13 @@
+# Copy to /etc/campusnet-ap.env with mode 600, or export these variables.
+# Never commit the real RADIUS_SHARED_SECRET.
+WIFI_IFACE=wlp8s0
+UPSTREAM_IFACE=usb0
+AP_SSID=CampusNet-Demo
+AP_CHANNEL=11
+AP_ADDRESS=10.42.0.1/24
+DHCP_RANGE_START=10.42.0.20
+DHCP_RANGE_END=10.42.0.120
+RADIUS_ADDR=127.0.0.1
+RADIUS_AUTH_PORT=1812
+RADIUS_ACCT_PORT=1813
+RADIUS_SHARED_SECRET=replace-locally

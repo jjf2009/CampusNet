@@ -18,3 +18,7 @@ def test_event_id_is_stable_when_missing():
     line = '{"timestamp":"2026-11-01T10:00:00Z","username":"x","result":"reject"}'
     assert parse_event_line(line)["event_id"] == parse_event_line(line)["event_id"]
 
+
+def test_parser_normalizes_radius_reply_packet_types():
+    event = parse_event_line('{"timestamp":"2026-11-01T10:00:00Z","username":"x","result":"Access-Reject"}')
+    assert event["result"] == "reject"

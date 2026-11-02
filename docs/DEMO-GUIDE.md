@@ -148,4 +148,47 @@ Use this closing statement:
 
 Currently demonstrated: local application, SQLite persistence, safe event parsing, API contracts, dashboard rendering, and automated parser tests.
 
-Approval-gated or future: editing `/etc/raddb`, live FreeRADIUS `linelog` activation, protected log permissions, host service reload, WPA2-Enterprise access-point testing, Google Workspace integration, Cisco integration, VLAN assignment, production monitoring, and deployment beyond localhost.
+Approval-gated or future: editing `/etc/raddb`, live FreeRADIUS `linelog` activation, protected log permissions, host service reload, installing/configuring `hostapd`, changing Wi-Fi/forwarding/firewall state, WPA2-Enterprise access-point testing, Google Workspace integration, Cisco integration, VLAN assignment, production monitoring, and deployment beyond localhost. The guarded AP scripts and rollback procedure are in `scripts/`.
+
+## 8. Laptop hotspot procedure
+
+This procedure uses the phone connected by USB as the upstream internet connection and the laptop Wi-Fi adapter as the isolated downstream AP.
+
+Install the missing AP package once:
+
+```bash
+sudo dnf install hostapd
+```
+
+Connect USB tethering, then identify the upstream interface:
+
+```bash
+nmcli device status
+ip route get 1.1.1.1
+```
+
+Create the local root-owned configuration from the example, set its mode to `600`, and replace only the placeholder values locally:
+
+```bash
+sudo install -m 600 scripts/campusnet-ap.conf.example /etc/campusnet-ap.env
+sudoedit /etc/campusnet-ap.env
+```
+
+Set `UPSTREAM_IFACE` to the USB-tether interface and set the RADIUS shared secret without committing or displaying it. Then start the guarded AP:
+
+```bash
+sudo env CONFIRM_CAMPUSNET_AP=YES \
+  CAMPUSNET_AP_ENV=/etc/campusnet-ap.env \
+  scripts/start-campusnet-ap.sh
+```
+
+On the friend’s phone, select `CampusNet-Demo`, choose WPA2-Enterprise/802.1X, use the fictional demo username and local demo password, and select the institution-approved CA validation option. The exact EAP method and CA trust behavior depend on the FreeRADIUS EAP configuration and phone OS; do not bypass certificate validation in a production design.
+
+After testing both accepted and rejected credentials, restore the laptop:
+
+```bash
+sudo scripts/stop-campusnet-ap.sh
+nmcli device status
+```
+
+If the AP script stops during startup, it attempts the same rollback automatically. Never bridge this demo into a college or public network.
