@@ -1,11 +1,151 @@
-# CampusNet demo
+# CampusNet full demonstration guide
 
-1. Verify FreeRADIUS is running: `systemctl is-active radiusd`.
-2. Start the backend and frontend using the commands in `README.md`.
-3. Open the dashboard and show API, RADIUS, and ingestion status.
-4. Run a valid fictional `radtest` and show `Access-Accept` plus the dashboard event.
-5. Run the same fictional account with a wrong password and show `Access-Reject`.
-6. Show counters and explain that the captured event path is local and real.
+This guide is designed for a 3–5 minute presentation to the IT department. It separates currently implemented behavior from work requiring FreeRADIUS administrator approval or production infrastructure.
 
-The demo user is fictional. Google Workspace, Cisco AP/802.1X, and production rollout are not connected unless separately verified.
+## 1. What the demonstration proves
 
+The demonstration proves that CampusNet can:
+
+- receive safe, structured authentication outcomes;
+- validate and normalize event records without storing passwords or RADIUS secrets;
+- persist events in SQLite with duplicate protection;
+- expose persisted data through a typed FastAPI API; and
+- display API data in a responsive Next.js operations dashboard.
+
+It does not claim that a production access point, Cisco controller, Google Workspace, or WPA2-Enterprise client is connected. A `radtest` is a RADIUS protocol test; it is not by itself proof of a complete 802.1X Wi-Fi deployment.
+
+## 2. Pre-demo safety checklist
+
+- Use only the fictional local demo account.
+- Keep all services bound to `127.0.0.1`.
+- Do not show `/etc/raddb` secrets, private keys, `radiusd -X` output, or passwords on screen.
+- Do not modify or reload FreeRADIUS during a presentation.
+- Explain that any production RADIUS client, identity integration, VLAN policy, or firewall change requires IT approval.
+
+## 3. Prepare the application
+
+From the repository root:
+
+```bash
+cd backend
+source .venv/bin/activate
+python -m pytest
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+In a second terminal:
+
+```bash
+cd frontend
+npm run dev
+```
+
+Open:
+
+- Dashboard: <http://127.0.0.1:3000>
+- API documentation: <http://127.0.0.1:8000/docs>
+- Health endpoint: <http://127.0.0.1:8000/health>
+
+The backend reads `RADIUS_EVENT_LOG` from `backend/.env`. The intended live path is a dedicated FreeRADIUS JSON Lines log. For a safe UI rehearsal, use the supplied fictional fixture:
+
+```bash
+cd backend
+rm -f fixtures/events.jsonl.cursor
+RADIUS_EVENT_LOG=./fixtures/events.jsonl \
+  uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+The fixture is simulated input for rehearsal. It is not evidence of a live RADIUS transaction.
+
+## 4. Presentation sequence
+
+### Opening: explain the architecture
+
+Say:
+
+> CampusNet does not replace FreeRADIUS. FreeRADIUS remains the authentication authority. CampusNet consumes a restricted event stream, stores operational metadata, and gives administrators a local visibility layer.
+
+Point to the dashboard status cards:
+
+- API: whether FastAPI is reachable;
+- RADIUS: the separately checked host service state;
+- ingestion: whether the event log is available to the worker.
+
+This separation is important: a healthy API does not automatically mean that RADIUS is healthy.
+
+### Successful authentication
+
+If the local demo user has been configured and the approved RADIUS integration is active, run a fictional valid request:
+
+```bash
+radtest 'student01@gec.edu.in' '<fictional-demo-password>' 127.0.0.1 0 '<local-radius-shared-secret>'
+```
+
+Replace `<fictional-demo-password>` with the local fictional password already configured by the administrator. Do not place real institutional credentials in this command.
+
+Expected result:
+
+```text
+Access-Accept
+```
+
+Refresh the dashboard and show that one accepted event appears. Point out the timestamp, normalized username, result badge, and available NAS/AP/client metadata.
+
+### Rejected authentication
+
+Run the same test with an intentionally incorrect fictional password:
+
+```bash
+radtest 'student01@gec.edu.in' '<intentionally-wrong-demo-password>' 127.0.0.1 0 '<local-radius-shared-secret>'
+```
+
+Expected result:
+
+```text
+Access-Reject
+```
+
+Refresh the dashboard and show the rejected event and updated counters. Explain that rejection is an expected authentication outcome, not necessarily an application failure.
+
+### API verification
+
+Use Swagger or these read-only commands:
+
+```bash
+curl -s http://127.0.0.1:8000/health
+curl -s 'http://127.0.0.1:8000/api/events?limit=10'
+curl -s http://127.0.0.1:8000/api/stats
+curl -s http://127.0.0.1:8000/api/radius/status
+curl -s http://127.0.0.1:8000/api/system/overview
+```
+
+Demonstrate filtering:
+
+```bash
+curl -s 'http://127.0.0.1:8000/api/events?result=reject&username=student01'
+```
+
+Explain that the dashboard displays values returned from persisted backend data rather than fake browser-side numbers.
+
+## 5. Closing explanation
+
+Use this closing statement:
+
+> The local authentication decision is made by FreeRADIUS. CampusNet records only safe operational fields, protects against duplicate ingestion, persists the event, and presents it to an administrator. The next production decisions are institutional identity integration, certificate strategy, high availability, network-device configuration, privacy retention, and IT approval.
+
+## 6. Troubleshooting
+
+| Symptom | Check |
+|---|---|
+| Dashboard says API unavailable | Confirm Uvicorn is running on port 8000 and `NEXT_PUBLIC_API_URL` is correct. |
+| Ingestion says waiting | Confirm `RADIUS_EVENT_LOG` exists and is readable by the backend user. |
+| RADIUS is unknown | The API could not verify the configured `systemctl` service state; check the service manually. |
+| Events do not appear | Check the JSON Lines path, file permissions, timestamp, username, and `result` value. |
+| `radtest` is rejected unexpectedly | Verify the local demo user and PAP configuration with the RADIUS administrator; do not expose debug output in the dashboard. |
+| Port already in use | Stop the existing local process or choose an explicitly documented local development port. |
+
+## 7. Claims boundary
+
+Currently demonstrated: local application, SQLite persistence, safe event parsing, API contracts, dashboard rendering, and automated parser tests.
+
+Approval-gated or future: editing `/etc/raddb`, live FreeRADIUS `linelog` activation, protected log permissions, host service reload, WPA2-Enterprise access-point testing, Google Workspace integration, Cisco integration, VLAN assignment, production monitoring, and deployment beyond localhost.
