@@ -1,12 +1,33 @@
+"""Local RADIUS service health check.
+
+Uses a bounded, argument-only ``systemctl is-active`` call. The service
+name comes from configuration, never from request input, so there is no
+shell injection surface.
+"""
+
+from __future__ import annotations
+
+import shutil
 import subprocess
-from typing import Any
+
+_VALID_STATES = {"active", "inactive", "failed", "unknown"}
 
 
-def radius_status(service_name: str) -> dict[str, Any]:
+def radius_status(service_name: str) -> dict[str, str]:
+    if not shutil.which("systemctl"):
+        return {"status": "unknown", "service": service_name}
     try:
-        result = subprocess.run(["systemctl", "is-active", service_name], capture_output=True, text=True, timeout=2, check=False)
-        state = result.stdout.strip()
-        return {"status": state if state in {"active", "inactive", "failed", "unknown"} else "unknown", "service": service_name}
+        proc = subprocess.run(
+            ["systemctl", "is-active", service_name],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
     except (OSError, subprocess.TimeoutExpired):
         return {"status": "unknown", "service": service_name}
 
+    state = proc.stdout.strip()
+    if state not in _VALID_STATES:
+        state = "unknown"
+    return {"status": state, "service": service_name}

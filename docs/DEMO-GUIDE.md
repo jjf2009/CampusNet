@@ -141,6 +141,9 @@ Use this closing statement:
 | Ingestion says waiting | Confirm `RADIUS_EVENT_LOG` exists and is readable by the backend user. |
 | RADIUS is unknown | The API could not verify the configured `systemctl` service state; check the service manually. |
 | Events do not appear | Check the JSON Lines path, file permissions, timestamp, username, and `result` value. |
+| Event log stays empty after auth | SELinux may be denying `radiusd` the write. Check `sudo ausearch -m avc -ts recent`; confirm the `radiusd_log_t` label on `/var/log/campusnet` from the configure script. |
+| Reject events missing, accepts fine | The reject hook (`Post-Auth-Type REJECT`) is not installed; re-run the fixed configure script against a clean `/etc/raddb` backup. |
+| Phone cannot associate (PEAP) | Confirm PEAP server certs exist in `/etc/raddb/certs` (`sudo /etc/raddb/certs/bootstrap`), `default_eap_type = peap`, and the phone CA set to "Do not validate". |
 | `radtest` is rejected unexpectedly | Verify the local demo user and PAP configuration with the RADIUS administrator; do not expose debug output in the dashboard. |
 | Port already in use | Stop the existing local process or choose an explicitly documented local development port. |
 
@@ -148,13 +151,41 @@ Use this closing statement:
 
 Currently demonstrated: local application, SQLite persistence, safe event parsing, API contracts, dashboard rendering, and automated parser tests.
 
-Approval-gated or future: editing `/etc/raddb`, live FreeRADIUS `linelog` activation, protected log permissions, host service reload, installing/configuring `hostapd`, changing Wi-Fi/forwarding/firewall state, WPA2-Enterprise access-point testing, Google Workspace integration, Cisco integration, VLAN assignment, production monitoring, and deployment beyond localhost. The guarded AP scripts and rollback procedure are in `scripts/`.
+Live when §8 has been run successfully on this host: a real WPA2-Enterprise/802.1X PEAP-MSCHAPv2
+authentication from a separate phone, decided by FreeRADIUS and recorded as a dashboard event.
+Claim this only after a phone has actually connected over `CampusNet-Demo`; otherwise it remains
+a local protocol demo (`radtest`) plus the observability layer.
 
-## 8. Laptop hotspot procedure
+Approval-gated or future: editing `/etc/raddb`, live FreeRADIUS `linelog` activation, protected log permissions, host service reload, installing/configuring `hostapd`, changing Wi-Fi/forwarding/firewall state, Google Workspace integration, Cisco integration, VLAN assignment, production monitoring, and deployment beyond localhost. The guarded AP scripts and rollback procedure are in `scripts/`.
 
-This procedure uses the phone connected by USB as the upstream internet connection and the laptop Wi-Fi adapter as the isolated downstream AP.
+## 8. Live WPA2-Enterprise (802.1X) demonstration
 
-Install the missing AP package once:
+This is the Phase D demo: a separate phone authenticates against the host FreeRADIUS over
+real 802.1X, and the resulting Accept/Reject appears on the dashboard. The laptop Wi-Fi
+adapter is the isolated downstream AP; a phone connected by USB provides upstream internet.
+
+A `radtest` (§4) proves only the RADIUS protocol and the event pipeline. Only a phone
+connecting over `CampusNet-Demo` with an enterprise profile proves 802.1X. State that
+distinction in the presentation.
+
+### 8.1 One-time RADIUS integration (administrator, approval-gated)
+
+Apply the dedicated event logger and enable PEAP (see `docs/RADIUS-INTEGRATION.md`). The
+configure script backs up `/etc/raddb`, installs two safe `linelog` instances
+(Accept and Reject paths), labels the event directory for SELinux (`radiusd_log_t`), and
+validates with `radiusd -XC` without restarting:
+
+```bash
+sudo env CONFIRM_CAMPUSNET_RADIUS=YES APP_USER="$USER" scripts/configure-radius-campusnet.sh
+sudo systemctl restart radiusd && systemctl is-active radiusd
+```
+
+Point `backend/.env` at the host log: `RADIUS_EVENT_LOG=/var/log/campusnet/radius-events.jsonl`.
+SELinux must stay enforcing; `semanage` (`policycoreutils-python-utils`) is required by the script.
+
+### 8.2 Start the access point
+
+Install the AP package once (if absent):
 
 ```bash
 sudo dnf install hostapd
@@ -182,7 +213,23 @@ sudo env CONFIRM_CAMPUSNET_AP=YES \
   scripts/start-campusnet-ap.sh
 ```
 
-On the friend’s phone, select `CampusNet-Demo`, choose WPA2-Enterprise/802.1X, use the fictional demo username and local demo password, and select the institution-approved CA validation option. The exact EAP method and CA trust behavior depend on the FreeRADIUS EAP configuration and phone OS; do not bypass certificate validation in a production design.
+### 8.3 Connect the test phone
+
+On the second phone, select SSID `CampusNet-Demo` and enter:
+
+- Security: **WPA2-Enterprise** (802.1X)
+- EAP method: **PEAP**
+- Phase-2 authentication: **MSCHAPV2**
+- Identity: `student01@gec.edu.in`
+- Password: the fictional local demo password
+- CA certificate: **Do not validate** (the host uses a self-signed demo certificate; Android 11+
+  requires this toggle). This is acceptable for a local demo only. Production must use a trusted
+  CA and real certificate validation — never bypass it.
+
+On `Access-Accept` the phone joins; the ingestion worker (polling every few seconds) adds the
+event with `auth_method=eap`, the phone MAC as calling-station, and the AP/SSID as
+called-station. Enter a wrong password once to show an `Access-Reject` event. No manual refresh
+is needed — the dashboard polls, or use its refresh action.
 
 After testing both accepted and rejected credentials, restore the laptop:
 

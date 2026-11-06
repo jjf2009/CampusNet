@@ -39,12 +39,30 @@ if [[ -n "$APP_USER" ]]; then
   setfacl -d -m "u:$APP_USER:rX,g:$RADIUS_USER:rX" "$EVENT_DIR"
 fi
 
+# SELinux: radiusd_t may only write radiusd_log_t paths. Label the event dir so the
+# linelog module can write here under enforcement (do not disable SELinux).
+if command -v getenforce >/dev/null 2>&1 && [[ "$(getenforce)" != "Disabled" ]]; then
+  command -v semanage >/dev/null 2>&1 || die "semanage is required for SELinux labeling. Install: dnf install -y policycoreutils-python-utils"
+  semanage fcontext -a -t radiusd_log_t "${EVENT_DIR}(/.*)?" 2>/dev/null \
+    || semanage fcontext -m -t radiusd_log_t "${EVENT_DIR}(/.*)?"
+  restorecon -Rv "$EVENT_DIR"
+fi
+
+# Two instances: one per outcome. The result is hardcoded by call site instead of relying
+# on %{reply:Packet-Type}, which is not reliably set in the Post-Auth-Type REJECT path.
 cat > "$LINETO" <<EOF
 linelog campusnet_event {
     filename = $EVENT_LOG
     permissions = 0640
     group = $RADIUS_USER
-    format = "{\"timestamp\":\"%T\",\"username\":\"%{User-Name}\",\"result\":\"%{reply:Packet-Type}\",\"nas_ip\":\"%{NAS-IP-Address}\",\"nas_port\":\"%{NAS-Port}\",\"calling_station_id\":\"%{Calling-Station-Id}\",\"called_station_id\":\"%{Called-Station-Id}\",\"auth_method\":\"%{control:Auth-Type}\",\"source\":\"freeradius\"}"
+    format = "{\"timestamp\":\"%T\",\"username\":\"%{User-Name}\",\"result\":\"Access-Accept\",\"nas_ip\":\"%{NAS-IP-Address}\",\"nas_port\":\"%{NAS-Port}\",\"calling_station_id\":\"%{Calling-Station-Id}\",\"called_station_id\":\"%{Called-Station-Id}\",\"auth_method\":\"%{control:Auth-Type}\",\"source\":\"freeradius\"}"
+}
+
+linelog campusnet_event_reject {
+    filename = $EVENT_LOG
+    permissions = 0640
+    group = $RADIUS_USER
+    format = "{\"timestamp\":\"%T\",\"username\":\"%{User-Name}\",\"result\":\"Access-Reject\",\"nas_ip\":\"%{NAS-IP-Address}\",\"nas_port\":\"%{NAS-Port}\",\"calling_station_id\":\"%{Calling-Station-Id}\",\"called_station_id\":\"%{Called-Station-Id}\",\"auth_method\":\"%{control:Auth-Type}\",\"source\":\"freeradius\"}"
 }
 EOF
 chown root:"$RADIUS_USER" "$LINETO"
@@ -58,22 +76,16 @@ fi
 
 TMP_SITE="$(mktemp)"
 awk '
-  BEGIN { in_post=0; depth=0; inserted=0 }
-  !in_post && $0 ~ /^[[:space:]]*post-auth[[:space:]]*\{/ { in_post=1; depth=1; print; next }
-  in_post {
-    opens=gsub(/\{/, "{"); closes=gsub(/\}/, "}")
-    if (depth == 1 && closes > opens && !inserted) {
-      print "    campusnet_event"
-      inserted=1
-    }
-    depth += opens - closes
-    print
-    if (depth == 0) in_post=0
-    next
+  BEGIN { acc=0; rej=0 }
+  /^[[:space:]]*post-auth[[:space:]]*\{/ && !acc {
+    print; print "\tcampusnet_event"; acc=1; next
+  }
+  /Post-Auth-Type[[:space:]]+REJECT[[:space:]]*\{/ && !rej {
+    print; print "\t\tcampusnet_event_reject"; rej=1; next
   }
   { print }
-  END { if (!inserted) exit 2 }
-' "$SITE_FILE" > "$TMP_SITE" || { rm -f "$TMP_SITE"; die "Could not locate a safe post-auth insertion point. Backup remains at $BACKUP_FILE"; }
+  END { if (!acc || !rej) exit 2 }
+' "$SITE_FILE" > "$TMP_SITE" || { rm -f "$TMP_SITE"; die "Could not locate post-auth and Post-Auth-Type REJECT insertion points. Backup remains at $BACKUP_FILE"; }
 install -o root -g root -m 0640 "$TMP_SITE" "$SITE_FILE"
 rm -f "$TMP_SITE"
 
