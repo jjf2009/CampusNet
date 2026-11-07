@@ -8,6 +8,7 @@ data/
 *.log
 node_modules/
 .next/
+*.tsbuildinfo
 dist/
 *.pem
 *.key

@@ -12,7 +12,11 @@ The demonstration proves that CampusNet can:
 - expose persisted data through a typed FastAPI API; and
 - display API data in a responsive Next.js operations dashboard.
 
-It does not claim that a production access point, Cisco controller, Google Workspace, or WPA2-Enterprise client is connected. A `radtest` is a RADIUS protocol test; it is not by itself proof of a complete 802.1X Wi-Fi deployment.
+With Phase D (§8) run on this host it also demonstrates a real **WPA2-Enterprise / 802.1X**
+login: a phone authenticates against the host FreeRADIUS over PEAP-MSCHAPv2 and the outcome
+appears on the dashboard. A `radtest` alone is only a RADIUS protocol test and is not proof of
+802.1X — the phone connection is. It does **not** claim a production access point, Cisco
+controller, or Google Workspace integration; those remain future work.
 
 ## 2. Pre-demo safety checklist
 
