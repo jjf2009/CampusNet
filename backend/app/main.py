@@ -28,6 +28,7 @@ async def lifespan(app: FastAPI):
         log_path=settings.radius_event_log,
         session_factory=SessionLocal,
         poll_interval_seconds=settings.poll_interval_seconds,
+        cursor_path=settings.ingestion_cursor_path,
     )
     app.state.worker = worker
     worker.start()

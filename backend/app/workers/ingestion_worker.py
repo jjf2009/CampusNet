@@ -33,8 +33,9 @@ class IngestionWorker:
         log_path: Path,
         session_factory: Callable[[], Session],
         poll_interval_seconds: float,
+        cursor_path: Path | None = None,
     ) -> None:
-        self.tailer = EventTailer(log_path)
+        self.tailer = EventTailer(log_path, cursor_path=cursor_path)
         self._session_factory = session_factory
         self._interval = max(0.2, float(poll_interval_seconds))
         self._task: asyncio.Task | None = None

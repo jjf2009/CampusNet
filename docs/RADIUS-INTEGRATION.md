@@ -22,6 +22,7 @@ The repository provides guarded scripts:
 
 - `scripts/start-campusnet-ap.sh` configures the AP interface, DHCP, IPv4 forwarding, NAT, hostapd, and a localhost RADIUS target.
 - `scripts/stop-campusnet-ap.sh` stops the processes, removes the demo nftables table, restores forwarding, and asks NetworkManager to restore the original Wi-Fi connection.
+- `scripts/start-campusnet-ap-local.sh` / `scripts/stop-campusnet-ap-local.sh` are an **auth-only** variant: they bring up the same WPA2-Enterprise SSID pointed at localhost RADIUS but make **no** forwarding, NAT, or firewall changes and need no upstream interface. The connecting device authenticates (and appears on the dashboard) with no internet. This is the recommended demo path when internet on the client is not required; see `docs/DEMO-GUIDE.md` §8.4.
 - `scripts/campusnet-ap.conf.example` documents non-secret settings. The real shared secret must be supplied through `/etc/campusnet-ap.env` with mode `600` or an environment variable.
 - `scripts/configure-radius-campusnet.sh` creates a protected backup, enables PEAP when the installed EAP configuration has the expected default, installs one safe `linelog` instance that records the reply packet type, inserts the post-auth hook, grants the backend user read access to the event directory, and validates with `radiusd -XC` without restarting the service.
 

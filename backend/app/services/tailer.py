@@ -17,9 +17,15 @@ from .parser import parse_event_line
 
 
 class EventTailer:
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, cursor_path: Path | None = None) -> None:
         self.path = Path(path)
-        self.cursor_path = self.path.with_suffix(self.path.suffix + ".cursor")
+        # The cursor defaults to sitting next to the log, but can be redirected
+        # to a writable location when the log directory is read-only for us.
+        self.cursor_path = (
+            Path(cursor_path)
+            if cursor_path is not None
+            else self.path.with_suffix(self.path.suffix + ".cursor")
+        )
         self.offset = self._load_offset()
         self.last_error: str | None = None
 

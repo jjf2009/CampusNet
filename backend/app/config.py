@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     # Dev default is a project-local fixture path. For the live integration
     # point this at the host log, e.g. /var/log/campusnet/radius-events.jsonl
     radius_event_log: Path = Path("./data/radius-events.jsonl")
+    # Cursor is stored app-local (writable) rather than next to the log, which
+    # lives in a RADIUS-owned directory the backend may only read.
+    ingestion_cursor_path: Path = Path("./data/ingestion.cursor")
     radius_service_name: str = "radiusd"
 
     # Ingestion worker

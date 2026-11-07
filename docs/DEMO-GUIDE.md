@@ -162,11 +162,25 @@ Approval-gated or future: editing `/etc/raddb`, live FreeRADIUS `linelog` activa
 
 This is the Phase D demo: a separate phone authenticates against the host FreeRADIUS over
 real 802.1X, and the resulting Accept/Reject appears on the dashboard. The laptop Wi-Fi
-adapter is the isolated downstream AP; a phone connected by USB provides upstream internet.
+adapter is the isolated downstream AP.
 
 A `radtest` (§4) proves only the RADIUS protocol and the event pipeline. Only a phone
 connecting over `CampusNet-Demo` with an enterprise profile proves 802.1X. State that
 distinction in the presentation.
+
+**Two modes — pick one:**
+
+- **Auth-only (recommended, §8.4):** the phone authenticates and appears on the dashboard
+  but gets no internet. No USB tether, no NAT, no firewall changes — simplest and safest,
+  and it is all the demo needs. The 802.1X exchange completes during association, before
+  internet would matter. Uses `scripts/start-campusnet-ap-local.sh`.
+- **With internet (§8.2):** a USB-tethered phone provides upstream so the connecting device
+  also gets internet via NAT. More moving parts (needs a second phone for the tether). Uses
+  `scripts/start-campusnet-ap.sh`.
+
+§8.1 (RADIUS integration) applies to both. The common chip check: the laptop's Realtek
+adapter must actually run an AP — bring the AP up once before demo day and confirm
+`AP-ENABLED` in the hostapd log; if the driver errors, use a known-good USB Wi-Fi adapter.
 
 ### 8.1 One-time RADIUS integration (administrator, approval-gated)
 
@@ -239,3 +253,46 @@ nmcli device status
 ```
 
 If the AP script stops during startup, it attempts the same rollback automatically. Never bridge this demo into a college or public network.
+
+### 8.4 Auth-only mode (recommended — no internet)
+
+Simpler than §8.2: the phone authenticates and shows on the dashboard, with no USB tether,
+no NAT, and no firewall changes. §8.1 (RADIUS integration) must already be applied, and
+`backend/.env` must point at the host log.
+
+Create the local root-owned env file (mode `600`) holding only the RADIUS shared secret —
+`UPSTREAM_IFACE` is not needed in this mode:
+
+```bash
+sudo install -m 600 /dev/null /etc/campusnet-ap.env
+sudoedit /etc/campusnet-ap.env   # set WIFI_IFACE, AP_SSID, AP_CHANNEL, RADIUS_SHARED_SECRET
+```
+
+Chip feasibility check (do once before demo day; fully reversible):
+
+```bash
+sudo env CONFIRM_CAMPUSNET_AP=YES bash scripts/start-campusnet-ap-local.sh
+sudo grep -i 'AP-ENABLED\|interface state' /run/campusnet-ap/hostapd.log   # want AP-ENABLED
+sudo bash scripts/stop-campusnet-ap-local.sh
+```
+
+Demo run (backend + frontend already up, dashboard open):
+
+```bash
+sudo env CONFIRM_CAMPUSNET_AP=YES bash scripts/start-campusnet-ap-local.sh
+```
+
+Connect the test phone exactly as in §8.3 (WPA2-Enterprise / PEAP / MSCHAPV2 / identity
+`student01@gec.edu.in` / CA "Do not validate"). The dashboard shows a live `Access-Accept`
+within a few seconds; a wrong password shows `Access-Reject`. The phone will report
+"connected, no internet" — that is expected and does not affect the authentication demo.
+
+Restore the laptop Wi-Fi afterwards:
+
+```bash
+sudo bash scripts/stop-campusnet-ap-local.sh
+```
+
+If `hostapd` or `dnsmasq` dies immediately, SELinux may be denying access to
+`/run/campusnet-ap/`; check `sudo ausearch -m avc -ts recent | tail` and relabel rather than
+disabling SELinux.
