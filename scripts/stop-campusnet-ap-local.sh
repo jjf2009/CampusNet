@@ -17,16 +17,29 @@ if [[ -f "$STATE_DIR/hostapd.pid" ]]; then kill "$(cat "$STATE_DIR/hostapd.pid")
 if [[ -f "$STATE_DIR/dnsmasq.pid" ]]; then kill "$(cat "$STATE_DIR/dnsmasq.pid")" 2>/dev/null || true; fi
 
 ORIGINAL_CONNECTION=""
+HAVE_FIREWALLD="no"
+ORIGINAL_AP_ZONE=""
 if [[ -f "$STATE_DIR/state" ]]; then
   # shellcheck disable=SC1091
   source "$STATE_DIR/state"
 fi
 
-ip addr flush dev "$WIFI_IFACE" 2>/dev/null || true
-nmcli device set "$WIFI_IFACE" managed yes || true
-if [[ -n "${ORIGINAL_CONNECTION:-}" && "$ORIGINAL_CONNECTION" != "--" ]]; then
-  nmcli connection up "$ORIGINAL_CONNECTION" || true
+# Restore the AP interface's firewall zone (undo the demo trusted-zone move).
+if [[ "$HAVE_FIREWALLD" == "yes" ]] && command -v firewall-cmd >/dev/null 2>&1; then
+  firewall-cmd --zone=trusted --remove-interface="$WIFI_IFACE" >/dev/null 2>&1 || true
+  if [[ -n "$ORIGINAL_AP_ZONE" && "$ORIGINAL_AP_ZONE" != "no zone" ]]; then
+    firewall-cmd --zone="$ORIGINAL_AP_ZONE" --add-interface="$WIFI_IFACE" >/dev/null 2>&1 || true
+  fi
 fi
 
+ip addr flush dev "$WIFI_IFACE" 2>/dev/null || true
+nmcli device set "$WIFI_IFACE" managed yes || true
+# Let NetworkManager pick the right profile for the device; fall back to the
+# captured connection name only if that fails.
+nmcli device connect "$WIFI_IFACE" >/dev/null 2>&1 \
+  || { [[ -n "$ORIGINAL_CONNECTION" && "$ORIGINAL_CONNECTION" != "--" ]] \
+       && nmcli connection up "$ORIGINAL_CONNECTION" >/dev/null 2>&1; } \
+  || true
+
 rm -rf "$STATE_DIR"
-echo "CampusNet AP (auth-only) stopped; NetworkManager restoration attempted."
+echo "CampusNet AP (auth-only) stopped; Wi-Fi handed back to NetworkManager."

@@ -56,8 +56,20 @@ chmod 700 "$STATE_DIR"
 [[ ! -f "$STATE_DIR/state" ]] || die "CampusNet AP appears active; run stop-campusnet-ap-local.sh first."
 
 ORIGINAL_CONNECTION="$(nmcli -t -f GENERAL.CONNECTION device show "$WIFI_IFACE" | sed 's/^GENERAL.CONNECTION://')"
-printf 'WIFI_IFACE=%q\nORIGINAL_CONNECTION=%q\nMODE=%q\n' \
-  "$WIFI_IFACE" "$ORIGINAL_CONNECTION" "local-auth-only" > "$STATE_DIR/state"
+
+# If firewalld is running, the AP interface's default zone blocks the client's
+# DHCP request (udp/67). Move it to the trusted zone for the demo so dnsmasq can
+# serve leases. This adds NO forwarding/NAT — it only lets the isolated AP subnet
+# reach our local DHCP. Fully restored on stop.
+HAVE_FIREWALLD=no
+ORIGINAL_AP_ZONE=""
+if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+  HAVE_FIREWALLD=yes
+  ORIGINAL_AP_ZONE="$(firewall-cmd --get-zone-of-interface="$WIFI_IFACE" 2>/dev/null || true)"
+fi
+
+printf 'WIFI_IFACE=%q\nORIGINAL_CONNECTION=%q\nHAVE_FIREWALLD=%q\nORIGINAL_AP_ZONE=%q\nMODE=%q\n' \
+  "$WIFI_IFACE" "$ORIGINAL_CONNECTION" "$HAVE_FIREWALLD" "$ORIGINAL_AP_ZONE" "local-auth-only" > "$STATE_DIR/state"
 chmod 600 "$STATE_DIR/state"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -71,6 +83,11 @@ ip link set "$WIFI_IFACE" down
 ip addr flush dev "$WIFI_IFACE"
 ip addr add "$AP_ADDRESS" dev "$WIFI_IFACE"
 ip link set "$WIFI_IFACE" up
+
+# Allow the client subnet to reach our DHCP/DNS (no NAT, no forwarding).
+if [[ "$HAVE_FIREWALLD" == "yes" ]]; then
+  firewall-cmd --zone=trusted --add-interface="$WIFI_IFACE" >/dev/null 2>&1 || true
+fi
 
 # DHCP only — no upstream DNS, no NAT. Connecting devices get an address so the
 # association completes cleanly; they will correctly show "no internet".
